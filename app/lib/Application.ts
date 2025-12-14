@@ -1,4 +1,4 @@
-import { Timestamp } from "next/dist/server/lib/cache-handlers/types";
+import { Timestamp } from "firebase/firestore";
 
 export class Application {
     constructor(public id: string, public listing_id: string, public user_uuid: string, public description: string, public days_renting: number, public status: "pending" | "approved" | "rejected", public created_at: Timestamp) {

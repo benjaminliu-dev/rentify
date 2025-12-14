@@ -1,4 +1,4 @@
-import { Timestamp } from "next/dist/server/lib/cache-handlers/types";
+import { Timestamp } from "firebase/firestore";
 
 export class User {
 
@@ -7,7 +7,7 @@ export class User {
         this.uuid = uuid;
         this.email = email;
         this.neighborhood = neighborhood;
-        this.role = role;
+        // this.role = role;
         this.created_at = created_at;
         this.stripe_customer_id = stripe_customer_id;
     }

@@ -1,4 +1,4 @@
-import { Timestamp } from "next/dist/server/lib/cache-handlers/types";
+import { Timestamp } from "firebase/firestore";
 import { Price } from "./Price";
 
 export class Listing {

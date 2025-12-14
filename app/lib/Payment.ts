@@ -1,4 +1,4 @@
-import { Timestamp } from "next/dist/server/lib/cache-handlers/types";
+import { Timestamp } from "firebase/firestore";
 
 export class Payment {
     constructor(public id: string, public listing_id: string, public tenant_uuid: string, public owner_uuid: string, public stripe_payment_intent_id: string, public amount: number, public status: "pending" | "paid" | "failed" | "refunded", public created_at: Timestamp) {

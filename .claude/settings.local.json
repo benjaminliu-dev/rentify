@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(for file in Screenshot*.png)",
+      "Bash(do cp \"$file\" bloom-logo.png)",
+      "Bash(done)"
+    ]
+  }
+}

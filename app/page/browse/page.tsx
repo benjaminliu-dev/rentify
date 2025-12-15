@@ -1,7 +1,9 @@
 "use client";
 
 import Listing from "@/app/components/Listing";
+import { withIdTokenHeader } from "@/app/lib/id_token";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 type ListingStatus = "available" | "pending" | "rented";
@@ -24,28 +26,56 @@ type ListingDTO = {
 };
 
 function formatPriceLabel(price: ListingDTO["price"]) {
+  if (!price || typeof price.amount !== 'number') {
+    return "Price not available";
+  }
   const dollars = new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
     maximumFractionDigits: 0,
   }).format(price.amount / 100);
-  return `${dollars} / ${price.unit}`;
+  return `${dollars} / day`;
 }
 
 export default function BrowsePage() {
+  const router = useRouter();
   const [listings, setListings] = useState<ListingDTO[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const handleLogout = useCallback(async () => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch {
+      // ignore
+    }
+    // Clear localStorage
+    try {
+      localStorage.removeItem("idToken");
+      localStorage.removeItem("id_token");
+      localStorage.removeItem("user_uuid");
+      localStorage.removeItem("userUuid");
+      localStorage.removeItem("user_email");
+      localStorage.removeItem("user_name");
+      localStorage.removeItem("user_neighborhood");
+    } catch {
+      // ignore
+    }
+    router.replace("/login");
+  }, [router]);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/listings", {
-        method: "GET",
-        headers: { Accept: "application/json" },
-        cache: "no-store",
-      });
+      const res = await fetch(
+        "/api/listings",
+        withIdTokenHeader({
+          method: "GET",
+          headers: { Accept: "application/json" },
+          cache: "no-store",
+        })
+      );
       if (!res.ok) throw new Error(`Failed to fetch listings (${res.status})`);
       const data = (await res.json()) as ListingDTO[];
       setListings(Array.isArray(data) ? data : []);
@@ -76,11 +106,32 @@ export default function BrowsePage() {
               Browse listings
             </h1>
             <p className="text-sm text-zinc-600 dark:text-zinc-400">
-              Explore what’s available right now.
+              Explore what's available right now.
             </p>
           </div>
-          <div className="text-sm text-zinc-600 dark:text-zinc-400">
-            {countLabel}
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-zinc-600 dark:text-zinc-400">
+              {countLabel}
+            </span>
+            <Link
+              href="/page/my_listings"
+              className="rounded-full border border-black/10 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-white/[.145] dark:text-zinc-300 dark:hover:bg-zinc-900"
+            >
+              My Listings
+            </Link>
+            <Link
+              href="/page/applications"
+              className="rounded-full border border-black/10 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-white/[.145] dark:text-zinc-300 dark:hover:bg-zinc-900"
+            >
+              My Applications
+            </Link>
+            <button
+              type="button"
+              onClick={() => void handleLogout()}
+              className="rounded-full border border-black/10 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-white/[.145] dark:text-zinc-300 dark:hover:bg-zinc-900"
+            >
+              Logout
+            </button>
           </div>
         </header>
 
@@ -113,9 +164,9 @@ export default function BrowsePage() {
               listings.map((l) => (
                 <Link key={l.id} href={`/page/listing/${l.id}`} className="block">
                   <Listing
-                    title={l.title}
-                    description={l.description}
-                    ownerName={`Owner ${l.owner_uuid.slice(0, 6)}`}
+                    title={l.title || "Untitled"}
+                    description={l.description || "No description available"}
+                    ownerName="Listed by owner"
                     imageUri={l.image_uris?.[0] ?? null}
                     priceLabel={formatPriceLabel(l.price)}
                     status={l.status}

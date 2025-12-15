@@ -3,6 +3,14 @@ import { auth } from "@/app/lib/firebase_config";
 import { signInWithCustomToken, signInWithEmailAndPassword } from "firebase/auth";
 import { NextResponse } from "next/server";
 
+function setAuthCookies(res: NextResponse, idToken: string) {
+    // 7 days
+    const maxAge = 60 * 60 * 24 * 7;
+    // Note: httpOnly removed so client JavaScript can read the cookie for auth headers
+    res.cookies.set("idToken", idToken, { sameSite: "lax", path: "/", maxAge });
+    res.cookies.set("id_token", idToken, { sameSite: "lax", path: "/", maxAge });
+}
+
 
 export async function POST(request: Request): Promise<NextResponse> {
     try {
@@ -11,25 +19,29 @@ export async function POST(request: Request): Promise<NextResponse> {
         if (id) {
             const credential = await signInWithCustomToken(auth, id);
             const idToken = await credential.user.getIdToken();
-            return NextResponse.json({
+            const res = NextResponse.json({
                 user: {
                     uid: credential.user.uid,
                     email: credential.user.email,
                 },
                 idToken,
             });
+            setAuthCookies(res, idToken);
+            return res;
         }
 
         if (email && password) {
             const credential = await signInWithEmailAndPassword(auth, email, password);
             const idToken = await credential.user.getIdToken();
-            return NextResponse.json({
+            const res = NextResponse.json({
                 user: {
                     uid: credential.user.uid,
                     email: credential.user.email,
                 },
                 idToken,
             });
+            setAuthCookies(res, idToken);
+            return res;
         }
 
         return NextResponse.json({ error: ERROR_INVALID_REQUEST }, { status: 400 });

@@ -1,14 +1,58 @@
 "use client";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import { setIdTokenCookie, withIdTokenHeader } from "@/app/lib/id_token";
 
 export default function Home() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  function handleSubmit(event: FormEvent) {
+  async function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    console.log("Login submitted:", { email, password });
+    setLoading(true);
+    setError(null);
+
+    try {
+      const res = await fetch("/api/auth/login", {
+        ...withIdTokenHeader({
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password }),
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || `Login failed (${res.status})`);
+      }
+
+      const data = await res.json();
+
+      // Save credentials to localStorage
+      if (data.idToken) {
+        localStorage.setItem("idToken", data.idToken);
+        localStorage.setItem("id_token", data.idToken);
+        setIdTokenCookie(data.idToken);
+      }
+      if (data.user?.uid) {
+        localStorage.setItem("user_uuid", data.user.uid);
+        localStorage.setItem("userUuid", data.user.uid);
+      }
+      if (data.user?.email) {
+        localStorage.setItem("user_email", data.user.email);
+      }
+
+      // Redirect to Browse page
+      router.push("/page/browse");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to login");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -41,7 +85,9 @@ export default function Home() {
               placeholder="Enter your email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent transition"
+              required
+              disabled={loading}
+              className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent transition disabled:opacity-50"
             />
           </div>
 
@@ -56,17 +102,38 @@ export default function Home() {
               placeholder="Enter your password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent transition"
+              required
+              disabled={loading}
+              className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent transition disabled:opacity-50"
             />
           </div>
 
+          {error && (
+            <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800">
+              {error}
+            </div>
+          )}
+
           <button
             type="submit"
-            className="w-full bg-black text-white py-3 rounded-lg font-medium hover:bg-gray-800 transition mt-6 shadow-md"
+            disabled={loading}
+            className="w-full bg-black text-white py-3 rounded-lg font-medium hover:bg-gray-800 transition mt-6 shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Login
+            {loading ? "Logging in..." : "Login"}
           </button>
         </form>
+
+        <div className="mt-6 text-center">
+          <p className="text-gray-500 text-sm">
+            Don't have an account?{" "}
+            <a
+              href="/signup"
+              className="text-green-600 font-medium hover:text-green-700 transition"
+            >
+              Sign up
+            </a>
+          </p>
+        </div>
       </div>
     </div>
   );

@@ -4,6 +4,14 @@ import { createUserWithEmailAndPassword } from "firebase/auth";
 import { collection, doc, setDoc, Timestamp } from "firebase/firestore";
 import { NextResponse } from "next/server";
 
+function setAuthCookies(res: NextResponse, idToken: string) {
+    // 7 days
+    const maxAge = 60 * 60 * 24 * 7;
+    // Note: httpOnly removed so client JavaScript can read the cookie for auth headers
+    res.cookies.set("idToken", idToken, { sameSite: "lax", path: "/", maxAge });
+    res.cookies.set("id_token", idToken, { sameSite: "lax", path: "/", maxAge });
+}
+
 export async function POST(request: Request): Promise<NextResponse> {
     try {
         const data = await request.json();
@@ -25,7 +33,7 @@ export async function POST(request: Request): Promise<NextResponse> {
             created_at: Timestamp.now(),
         });
 
-        return NextResponse.json({
+        const res = NextResponse.json({
             user: {
                 uid: credential.user.uid,
                 email,
@@ -34,6 +42,8 @@ export async function POST(request: Request): Promise<NextResponse> {
             },
             idToken,
         });
+        setAuthCookies(res, idToken);
+        return res;
     } catch (error) {
         const message = error instanceof Error ? error.message : "Unable to register";
         return NextResponse.json({ error: message }, { status: 500 });

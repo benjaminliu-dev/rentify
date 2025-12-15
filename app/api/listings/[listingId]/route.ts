@@ -3,9 +3,12 @@ import { firestore } from "@/app/lib/firebase_config";
 import { doc, getDoc } from "firebase/firestore";
 import { NextResponse } from "next/server";
 
-export async function GET(request: Request, context: { params: { listingId: string } }): Promise<NextResponse> {
+type RouteContext = { params: { listingId: string } | Promise<{ listingId: string }> };
+
+export async function GET(request: Request, { params }: RouteContext): Promise<NextResponse> {
     try {
-        const { listingId } = context.params ?? {};
+        const resolvedParams = await Promise.resolve(params as any);
+        const listingId = resolvedParams?.listingId;
         if (!listingId) {
             return NextResponse.json({ error: ERROR_INVALID_REQUEST }, { status: 400 });
         }

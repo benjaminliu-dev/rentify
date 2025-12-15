@@ -1,10 +1,8 @@
-// not sure what this needs to do; /success seems to work fine without it
-// but let's keep it for now in case we need it later
-// i'm so tired
+// Handles Stripe webhook events after payment completion
 import { ERROR_INVALID_REQUEST, ERROR_LISTING_NOT_FOUND } from "@/app/lib/errors";
 import { firestore } from "@/app/lib/firebase_config";
 import { stripe } from "@/app/lib/stripe_config";
-import { collection, doc, getDoc, getDocs, query, where, writeBatch } from "firebase/firestore";
+import { collection, deleteDoc, doc, getDoc, getDocs, query, updateDoc, where } from "firebase/firestore";
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
@@ -21,12 +19,14 @@ async function handlePaymentMetadata(metadata: Stripe.Metadata): Promise<void> {
         return;
     }
 
-    const secureRef = doc(firestore, "secureStrings", secureString);
-    const secureSnap = await getDoc(secureRef);
+    const secureSnap = await getDoc(doc(firestore, "secureStrings", secureString));
     if (!secureSnap.exists()) {
         return;
     }
     const secureData = secureSnap.data();
+    if (!secureData) {
+        return;
+    }
     if (
         secureData.listingId !== listingId ||
         secureData.applicationId !== applicationId ||
@@ -35,38 +35,38 @@ async function handlePaymentMetadata(metadata: Stripe.Metadata): Promise<void> {
         return;
     }
 
-    const listingRef = doc(firestore, "listings", listingId);
-    const listingSnap = await getDoc(listingRef);
+    const listingSnap = await getDoc(doc(firestore, "listings", listingId));
     if (!listingSnap.exists()) {
         throw new Error(ERROR_LISTING_NOT_FOUND);
     }
 
-    const applicationRef = doc(firestore, "applications", applicationId);
-    const applicationSnap = await getDoc(applicationRef);
-    if (!applicationSnap.exists() || applicationSnap.data().listing_id !== listingId) {
+    const applicationSnap = await getDoc(doc(firestore, "applications", applicationId));
+    if (!applicationSnap.exists() || (applicationSnap.data() as any)?.listing_id !== listingId) {
         throw new Error(ERROR_INVALID_REQUEST);
     }
 
-    const batch = writeBatch(firestore);
-
-    batch.update(listingRef, {
+    // Update listing
+    await updateDoc(doc(firestore, "listings", listingId), {
         current_tenant_uuid: applicantUuid,
         status: "rented",
         active: false,
     });
 
-    batch.update(applicationRef, { status: "approved" });
+    // Approve the selected application
+    await updateDoc(doc(firestore, "applications", applicationId), { status: "approved" });
 
-    const applicationsRef = collection(firestore, "applications");
-    const relatedApplications = await getDocs(query(applicationsRef, where("listing_id", "==", listingId)));
-    relatedApplications.docs.forEach((docSnap) => {
-        if (docSnap.id !== applicationId) {
-            batch.update(docSnap.ref, { status: "rejected" });
-        }
-    });
+    // Reject all other applications for this listing
+    const relatedApplications = await getDocs(
+        query(collection(firestore, "applications"), where("listing_id", "==", listingId))
+    );
+    await Promise.all(
+        relatedApplications.docs
+            .filter((d) => d.id !== applicationId)
+            .map((d) => updateDoc(d.ref, { status: "rejected" }))
+    );
 
-    batch.delete(secureRef);
-    await batch.commit();
+    // Delete the secure token
+    await deleteDoc(doc(firestore, "secureStrings", secureString));
 }
 
 export async function POST(request: Request): Promise<NextResponse> {

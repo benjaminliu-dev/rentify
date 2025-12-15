@@ -1,23 +1,19 @@
 import { ERROR_ACCESS_DENIED } from "@/app/lib/errors";
-import { auth, firestore } from "@/app/lib/firebase_config";
-import { signInWithCustomToken } from "firebase/auth";
+import { requireUidFromRequest } from "@/app/lib/require_uid";
+import { firestore } from "@/app/lib/firebase_config";
 import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { NextResponse } from "next/server";
 
+export const runtime = "nodejs";
+
 export async function GET(request: Request): Promise<NextResponse> {
     try {
-        const idToken = request.headers.get("Id-Token");
-        if (!idToken) {
-            return NextResponse.json({ error: ERROR_ACCESS_DENIED }, { status: 401 });
+        const auth = await requireUidFromRequest(request);
+        if (!auth.ok) {
+            return NextResponse.json({ error: auth.error }, { status: auth.status });
         }
 
-        const credential = await signInWithCustomToken(auth, idToken);
-        if (!credential?.user) {
-            return NextResponse.json({ error: ERROR_ACCESS_DENIED }, { status: 401 });
-        }
-
-        const uid = credential.user.uid;
-
+        const uid = auth.uid;
         const userDoc = await getDoc(doc(firestore, "users", uid));
         const user = userDoc.exists() ? { id: userDoc.id, ...userDoc.data() } : null;
 
@@ -29,9 +25,9 @@ export async function GET(request: Request): Promise<NextResponse> {
 
         let requests: any[] = [];
         if (listings.length) {
-            const listingIds = listings.map((l) => l.id);
+            const listingIds = listings.map((l: { id: string }) => l.id);
             const requestsResults = await Promise.all(
-                listingIds.map((listingId) =>
+                listingIds.map((listingId: string) =>
                     getDocs(query(collection(firestore, "applications"), where("listing_id", "==", listingId)))
                 )
             );
@@ -45,6 +41,7 @@ export async function GET(request: Request): Promise<NextResponse> {
             requests,
         });
     } catch (error) {
+        console.error(error);
         const message = error instanceof Error ? error.message : "Unable to fetch user data";
         return NextResponse.json({ error: message }, { status: 500 });
     }

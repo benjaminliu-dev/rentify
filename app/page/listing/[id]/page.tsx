@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { getIdToken, withIdTokenHeader } from "@/app/lib/id_token";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 type ListingStatus = "available" | "pending" | "rented";
@@ -22,7 +23,7 @@ type ListingDTO = {
   created_at: unknown;
 };
 
-type ApplicationStatus = "pending" | "approved" | "rejected";
+type ApplicationStatus = "pending" | "approved" | "rejected" | "confirmed" | "paid";
 type ApplicationDTO = {
   id: string;
   listing_id: string;
@@ -49,12 +50,15 @@ function getUserUuidFromLocalStorage() {
 }
 
 function formatPriceLabel(price: ListingDTO["price"]) {
+  if (!price || typeof price.amount !== 'number') {
+    return "Price not available";
+  }
   const dollars = new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
     maximumFractionDigits: 0,
   }).format(price.amount / 100);
-  return `${dollars} / ${price.unit}`;
+  return `${dollars} / day`;
 }
 
 function statusBadgeClasses(status: ListingStatus) {
@@ -68,15 +72,16 @@ function statusBadgeClasses(status: ListingStatus) {
   }
 }
 
-export default function ListingDetailPage({ params }: { params: { id: string } }) {
-  const id = params.id;
+export default function ListingDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const [id, setId] = useState<string>("");
   const [listing, setListing] = useState<ListingDTO | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [applications, setApplications] = useState<ApplicationDTO[]>([]);
-  const [appsLoading, setAppsLoading] = useState(true);
+  const [appsLoading, setAppsLoading] = useState(false);
   const [appsError, setAppsError] = useState<string | null>(null);
+  const [appsLoaded, setAppsLoaded] = useState(false);
 
   const [applyOpen, setApplyOpen] = useState(false);
   const [applyDescription, setApplyDescription] = useState("");
@@ -85,15 +90,21 @@ export default function ListingDetailPage({ params }: { params: { id: string } }
   const [applyError, setApplyError] = useState<string | null>(null);
   const [applySuccess, setApplySuccess] = useState<string | null>(null);
 
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [approveError, setApproveError] = useState<string | null>(null);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/listing/${encodeURIComponent(id)}`, {
-        method: "GET",
-        headers: { Accept: "application/json" },
-        cache: "no-store",
-      });
+      const res = await fetch(
+        `/api/listings/${encodeURIComponent(id)}`,
+        withIdTokenHeader({
+          method: "GET",
+          headers: { Accept: "application/json" },
+          cache: "no-store",
+        })
+      );
       if (!res.ok) throw new Error(`Failed to fetch listing (${res.status})`);
       const data = (await res.json()) as ListingDTO;
       setListing(data && typeof data === "object" ? data : null);
@@ -109,14 +120,40 @@ export default function ListingDetailPage({ params }: { params: { id: string } }
     setAppsLoading(true);
     setAppsError(null);
     try {
-      const res = await fetch(`/api/listings/${encodeURIComponent(id)}/applications`, {
-        method: "GET",
-        headers: { Accept: "application/json" },
-        cache: "no-store",
-      });
+      const idToken = getIdToken();
+
+      // Skip loading applications if no token (user not logged in or not the owner)
+      if (!idToken) {
+        setAppsError("Login required to view applications");
+        setApplications([]);
+        setAppsLoading(false);
+        return;
+      }
+
+      const res = await fetch(
+        `/api/listings/${encodeURIComponent(id)}/applications`,
+        withIdTokenHeader(
+          {
+            method: "GET",
+            headers: { Accept: "application/json" },
+            cache: "no-store",
+          },
+          idToken
+        )
+      );
+
+      // If 403, user is not the owner - this is okay
+      if (res.status === 403) {
+        setApplications([]);
+        setAppsError(null);
+        setAppsLoading(false);
+        return;
+      }
+
       if (!res.ok) throw new Error(`Failed to fetch applications (${res.status})`);
       const data = (await res.json()) as ApplicationDTO[];
       setApplications(Array.isArray(data) ? data : []);
+      setAppsLoaded(true);
     } catch (e) {
       setApplications([]);
       setAppsError(e instanceof Error ? e.message : "Failed to fetch applications");
@@ -163,15 +200,18 @@ export default function ListingDetailPage({ params }: { params: { id: string } }
         created_at: new Date().toISOString(),
       };
 
-      const res = await fetch(`/api/listings/${encodeURIComponent(id)}/applications`, {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        },
-        cache: "no-store",
-        body: JSON.stringify(body),
-      });
+      const res = await fetch(
+        `/api/listings/${encodeURIComponent(id)}/applications`,
+        withIdTokenHeader({
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          },
+          cache: "no-store",
+          body: JSON.stringify(body),
+        })
+      );
       if (!res.ok) throw new Error(`Failed to submit application (${res.status})`);
 
       setApplySuccess("Application submitted.");
@@ -186,15 +226,64 @@ export default function ListingDetailPage({ params }: { params: { id: string } }
     }
   }, [applyDays, applyDescription, id, loadApplications]);
 
+  const approveApplication = useCallback(async (applicationId: string) => {
+    setApproveError(null);
+    setApprovingId(applicationId);
+
+    const idToken = getIdToken();
+    if (!idToken) {
+      setApproveError("Not logged in");
+      setApprovingId(null);
+      return;
+    }
+
+    try {
+      const res = await fetch(
+        "/api/approveApplication",
+        withIdTokenHeader(
+          {
+            method: "POST",
+            headers: {
+              Accept: "application/json",
+              "Content-Type": "application/json",
+            },
+            cache: "no-store",
+            body: JSON.stringify({ listingId: id, applicationId }),
+          },
+          idToken
+        )
+      );
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        const msg = data?.error || `Failed to approve (${res.status})`;
+        throw new Error(msg);
+      }
+
+      // Refresh listing and applications to show updated status
+      await load();
+      await loadApplications();
+    } catch (e) {
+      setApproveError(e instanceof Error ? e.message : "Failed to approve application");
+    } finally {
+      setApprovingId(null);
+    }
+  }, [id, load, loadApplications]);
+
   useEffect(() => {
-    void load();
-    void loadApplications();
-  }, [load, loadApplications]);
+    params.then((p) => setId(p.id));
+  }, [params]);
+
+  useEffect(() => {
+    if (id) {
+      void load();
+    }
+  }, [id, load]);
 
   const headerRight = useMemo(() => {
     if (loading) return "Loading…";
     if (error) return "—";
-    return listing ? `Owner ${listing.owner_uuid.slice(0, 6)}` : "—";
+    return listing ? "Listed by owner" : "—";
   }, [error, listing, loading]);
 
   return (
@@ -322,63 +411,90 @@ export default function ListingDetailPage({ params }: { params: { id: string } }
 
               <div className="mt-5 rounded-xl bg-zinc-50 p-4 text-xs text-zinc-700 ring-1 ring-inset ring-black/8 dark:bg-zinc-900 dark:text-zinc-200 dark:ring-white/[.145]">
                 <div>
-                  <span className="font-medium">Listing ID:</span> {listing.id}
+                  <span className="font-medium">Status:</span>{" "}
+                  <span className="capitalize">{listing.status}</span>
                 </div>
                 <div className="mt-1">
-                  <span className="font-medium">Owner UUID:</span>{" "}
-                  {listing.owner_uuid}
+                  <span className="font-medium">Active:</span>{" "}
+                  {listing.active ? "Yes" : "No"}
                 </div>
-                {listing.current_tenant_uuid ? (
+                {listing.current_tenant_uuid && (
                   <div className="mt-1">
-                    <span className="font-medium">Tenant UUID:</span>{" "}
-                    {listing.current_tenant_uuid}
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="mt-5">
-                <div className="mb-2 flex items-center justify-between">
-                  <div className="text-sm font-semibold">Applications</div>
-                  <div className="text-xs text-zinc-600 dark:text-zinc-400">
-                    {appsLoading ? "Loading…" : `${applications.length}`}
-                  </div>
-                </div>
-
-                {appsError ? (
-                  <div className="rounded-xl bg-zinc-50 p-3 text-xs text-zinc-700 ring-1 ring-inset ring-black/8 dark:bg-zinc-900 dark:text-zinc-200 dark:ring-white/[.145]">
-                    {appsError}
-                  </div>
-                ) : appsLoading ? (
-                  <div className="rounded-xl bg-zinc-50 p-3 text-xs text-zinc-700 ring-1 ring-inset ring-black/8 dark:bg-zinc-900 dark:text-zinc-200 dark:ring-white/[.145]">
-                    Loading applications…
-                  </div>
-                ) : applications.length === 0 ? (
-                  <div className="rounded-xl bg-zinc-50 p-3 text-xs text-zinc-700 ring-1 ring-inset ring-black/8 dark:bg-zinc-900 dark:text-zinc-200 dark:ring-white/[.145]">
-                    No applications yet.
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {applications.slice(0, 3).map((a) => (
-                      <div
-                        key={a.id}
-                        className="rounded-xl bg-zinc-50 p-3 text-xs text-zinc-700 ring-1 ring-inset ring-black/8 dark:bg-zinc-900 dark:text-zinc-200 dark:ring-white/[.145]"
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="font-medium">
-                            {a.status} • {a.days_renting} days
-                          </div>
-                          <div className="text-zinc-500 dark:text-zinc-400">
-                            {a.user_uuid.slice(0, 8)}
-                          </div>
-                        </div>
-                        <div className="mt-1 line-clamp-3 text-zinc-600 dark:text-zinc-400">
-                          {a.description}
-                        </div>
-                      </div>
-                    ))}
+                    <span className="font-medium">Currently Rented:</span> Yes
                   </div>
                 )}
               </div>
+
+              {listing?.owner_uuid === getUserUuidFromLocalStorage() ? (
+                <div className="mt-5">
+                  <div className="mb-2 flex items-center justify-between">
+                    <div className="text-sm font-semibold">Applications</div>
+                    <div className="text-xs text-zinc-600 dark:text-zinc-400">
+                      {appsLoading ? "Loading…" : appsLoaded ? `${applications.length}` : "—"}
+                    </div>
+                  </div>
+
+                  {!appsLoaded ? (
+                    <button
+                      type="button"
+                      onClick={() => void loadApplications()}
+                      disabled={appsLoading}
+                      className="inline-flex w-full items-center justify-center rounded-full border border-black/10 px-4 py-2 text-sm font-medium text-zinc-900 hover:bg-zinc-50 disabled:opacity-50 dark:border-white/[.145] dark:text-zinc-50 dark:hover:bg-zinc-900"
+                    >
+                      {appsLoading ? "Loading…" : "Load applications"}
+                    </button>
+                  ) : null}
+
+                  {appsError ? (
+                    <div className="mt-3 rounded-xl bg-zinc-50 p-3 text-xs text-zinc-700 ring-1 ring-inset ring-black/8 dark:bg-zinc-900 dark:text-zinc-200 dark:ring-white/[.145]">
+                      {appsError}
+                    </div>
+                  ) : null}
+
+                  {approveError ? (
+                    <div className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-800 ring-1 ring-inset ring-rose-600/20 dark:bg-rose-950/50 dark:text-rose-200">
+                      {approveError}
+                    </div>
+                  ) : null}
+
+                  {appsLoaded ? (
+                    applications.length === 0 ? (
+                      <div className="mt-3 rounded-xl bg-zinc-50 p-3 text-xs text-zinc-700 ring-1 ring-inset ring-black/8 dark:bg-zinc-900 dark:text-zinc-200 dark:ring-white/[.145]">
+                        No applications yet.
+                      </div>
+                    ) : (
+                      <div className="mt-3 space-y-2">
+                        {applications.map((a) => (
+                          <div
+                            key={a.id}
+                            className="rounded-xl bg-zinc-50 p-3 text-xs text-zinc-700 ring-1 ring-inset ring-black/8 dark:bg-zinc-900 dark:text-zinc-200 dark:ring-white/[.145]"
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="font-medium capitalize">
+                                {a.status} • {a.days_renting}{" "}
+                                {a.days_renting === 1 ? "day" : "days"}
+                              </div>
+                              {a.status === "pending" ? (
+                                <button
+                                  type="button"
+                                  onClick={() => void approveApplication(a.id)}
+                                  disabled={approvingId !== null}
+                                  className="rounded-full bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                                >
+                                  {approvingId === a.id ? "Approving…" : "Approve"}
+                                </button>
+                              ) : null}
+                            </div>
+                            <div className="mt-1 line-clamp-3 text-zinc-600 dark:text-zinc-400">
+                              {a.description || "No description provided"}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  ) : null}
+                </div>
+              ) : null}
             </aside>
           </div>
         )}

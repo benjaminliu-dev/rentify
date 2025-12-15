@@ -149,7 +149,7 @@ export default function ApplicationsPage() {
   }, [apps.length, error, loading]);
 
   return (
-    <div className="min-h-screen bg-zinc-50 px-6 py-10 text-black dark:bg-black dark:text-zinc-50">
+    <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 dark:from-black dark:to-emerald-950 px-6 py-10 text-black dark:text-zinc-50">
       <div className="mx-auto w-full max-w-5xl">
         <header className="mb-8 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>

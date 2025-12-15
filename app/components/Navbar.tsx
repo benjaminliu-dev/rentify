@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { getIdToken, withIdTokenHeader } from "@/app/lib/id_token";
+import { useTheme } from "@/app/contexts/ThemeContext";
 
 const navLinks = [
   { href: "/page/browse", label: "Browse" },
@@ -37,6 +38,18 @@ function formatDate(value: unknown): string {
 
 export default function Navbar() {
   const pathname = usePathname();
+
+  // Don't show navbar on login/signup pages
+  if (pathname === "/login" || pathname === "/signup" || pathname === "/") {
+    return null;
+  }
+
+  return <NavbarContent />;
+}
+
+function NavbarContent() {
+  const pathname = usePathname();
+  const { theme, toggleTheme } = useTheme();
   const [notifications, setNotifications] = useState<NotificationDTO[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -95,11 +108,6 @@ export default function Navbar() {
     return () => clearInterval(interval);
   }, [fetchNotifications]);
 
-  // Don't show navbar on login/signup pages
-  if (pathname === "/login" || pathname === "/signup" || pathname === "/") {
-    return null;
-  }
-
   const handleLogout = () => {
     document.cookie = "idToken=; path=/; max-age=0";
     document.cookie = "id_token=; path=/; max-age=0";
@@ -121,13 +129,13 @@ export default function Navbar() {
   };
 
   return (
-    <nav className="sticky top-0 z-50 border-b border-zinc-200 bg-white/80 backdrop-blur-md dark:border-zinc-800 dark:bg-zinc-950/80">
+    <nav className="sticky top-0 z-50 border-b border-zinc-200 bg-white/80 backdrop-blur-md dark:border-emerald-900/30 dark:bg-black/95">
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4 sm:px-6">
         <Link
           href="/page/browse"
           className="font-[family-name:var(--font-league-spartan)] text-xl font-bold tracking-tight text-zinc-900 dark:text-white"
         >
-          Bloom
+          bloom.
         </Link>
 
         <div className="flex items-center gap-1 sm:gap-2">
@@ -139,8 +147,8 @@ export default function Navbar() {
                 href={link.href}
                 className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
                   isActive
-                    ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900"
-                    : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-white"
+                    ? "bg-zinc-900 text-white dark:bg-emerald-600 dark:text-white"
+                    : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-emerald-900/50 dark:hover:text-white"
                 }`}
               >
                 {link.label}
@@ -153,7 +161,7 @@ export default function Navbar() {
             <button
               type="button"
               onClick={handleBellClick}
-              className="relative rounded-full p-2 text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-white"
+              className="relative rounded-full p-2 text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-emerald-900/50 dark:hover:text-white"
               aria-label="Notifications"
             >
               <svg
@@ -237,8 +245,25 @@ export default function Navbar() {
 
           <button
             type="button"
+            onClick={toggleTheme}
+            className="ml-2 rounded-full p-2 text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-emerald-900/50 dark:hover:text-white"
+            aria-label="Toggle theme"
+          >
+            {theme === "light" ? (
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-5 w-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z" />
+              </svg>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-5 w-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z" />
+              </svg>
+            )}
+          </button>
+
+          <button
+            type="button"
             onClick={handleLogout}
-            className="ml-2 rounded-full border border-zinc-200 px-3 py-1.5 text-sm font-medium text-zinc-600 transition-colors hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 dark:border-zinc-700 dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-white"
+            className="ml-2 rounded-full border border-zinc-200 px-3 py-1.5 text-sm font-medium text-zinc-600 transition-colors hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 dark:border-emerald-800 dark:text-zinc-300 dark:hover:border-emerald-600 dark:hover:bg-emerald-900/50 dark:hover:text-white"
           >
             Logout
           </button>

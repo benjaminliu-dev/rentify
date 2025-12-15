@@ -62,7 +62,7 @@ export default function Home() {
           <div className="w-32 h-32 mb-3 bg-green-200 rounded-full flex items-center justify-center p-3">
             <Image
               src="/bloom-logo.png"
-              alt="Bloom Logo"
+              alt="bloom. Logo"
               width={112}
               height={112}
               className="w-full h-full object-contain"

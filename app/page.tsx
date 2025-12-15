@@ -13,7 +13,7 @@ export default function Home() {
   }, [router]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans text-zinc-900 dark:bg-black dark:text-zinc-50">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-green-50 to-emerald-100 dark:from-black dark:to-emerald-950 font-sans text-zinc-900 dark:text-zinc-50">
       Redirecting…
     </div>
   );

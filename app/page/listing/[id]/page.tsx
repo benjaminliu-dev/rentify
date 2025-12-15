@@ -287,7 +287,7 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
   }, [error, listing, loading]);
 
   return (
-    <div className="min-h-screen bg-zinc-50 px-6 py-10 text-black dark:bg-black dark:text-zinc-50">
+    <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 dark:from-black dark:to-emerald-950 px-6 py-10 text-black dark:text-zinc-50">
       <div className="mx-auto w-full max-w-6xl">
         <header className="mb-8 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -389,19 +389,21 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
                 {listing.description}
               </p>
 
-              <div className="mt-5 flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setApplyError(null);
-                    setApplySuccess(null);
-                    setApplyOpen(true);
-                  }}
-                  className="inline-flex w-full items-center justify-center rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc]"
-                >
-                  Apply
-                </button>
-              </div>
+              {listing.owner_uuid !== getUserUuidFromLocalStorage() && (
+                <div className="mt-5 flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setApplyError(null);
+                      setApplySuccess(null);
+                      setApplyOpen(true);
+                    }}
+                    className="inline-flex w-full items-center justify-center rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc]"
+                  >
+                    Apply
+                  </button>
+                </div>
+              )}
 
               {applySuccess ? (
                 <div className="mt-3 rounded-xl bg-emerald-50 px-3 py-2 text-xs text-emerald-800 ring-1 ring-inset ring-emerald-600/20 dark:bg-emerald-950/50 dark:text-emerald-200">
